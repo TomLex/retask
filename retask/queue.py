@@ -44,7 +44,7 @@ class Queue(object):
     to the localhost.
 
     """
-    def __init__(self, name, config=None):
+    def __init__(self, name, config=None, encoder=json):
         specified_config = config or {}
         self.name = name
         self._name = 'retaskqueue-' + name
@@ -55,6 +55,7 @@ class Queue(object):
             'password': None,
         }
         self.config.update(specified_config)
+        self.encoder = encoder
         self.rdb = None
         self.connected = False
 
@@ -116,11 +117,8 @@ class Queue(object):
            True
 
         """
-        config = self.config
-        self.rdb = redis.Redis(config['host'], config['port'], config['db'],\
-                              config['password'])
+        self.rdb = redis.Redis(**self.config)
         try:
-            info = self.rdb.info()
             self.connected = True
         except redis.ConnectionError:
             return False
@@ -156,7 +154,7 @@ class Queue(object):
         data = self.rdb.brpop(self._name, wait_time)
         if data:
             task = Task()
-            task.__dict__ = json.loads(data[1])
+            task.__dict__ = self.encoder.loads(data[1])
             return task
         else:
             return False
@@ -193,8 +191,8 @@ class Queue(object):
             return None
         if isinstance(data, six.binary_type):
             data = six.text_type(data, 'utf-8', errors = 'replace')
-        task = Task()
-        task.__dict__ = json.loads(data)
+        task = Task(encoder=self.encoder)
+        task.__dict__ = self.encoder.loads(data)
         return task
 
     def enqueue(self, task):
@@ -225,9 +223,9 @@ class Queue(object):
 
         try:
             #We can set the value to the queue
-            job = Job(self.rdb)
+            job = Job(self.rdb, encoder=self.encoder)
             task.urn = job.urn
-            text = json.dumps(task.__dict__)
+            text = self.encoder.dumps(task.__dict__)
             self.rdb.lpush(self._name, text)
         except Exception as err:
             return False
@@ -242,13 +240,13 @@ class Queue(object):
         :arg result: Result data to be send back. Should be in JSON serializable.
         :arg expire: Time in seconds after the key expires. Default is 60 seconds.
         """
-        self.rdb.lpush(task.urn, json.dumps(result))
+        self.rdb.lpush(task.urn, self.encoder.dumps(result))
         self.rdb.expire(task.urn, expire)
 
     def __repr__(self):
-            if not self:
-                return '%s()' % (self.__class__.__name__,)
-            return '%s(%r)' % (self.__class__.__name__, self.name)
+        if not self:
+            return '%s()' % (self.__class__.__name__,)
+        return '%s(%r)' % (self.__class__.__name__, self.name)
 
     def find(self, obj):
         """Returns the index of the given object in the queue, it might be string
@@ -274,10 +272,11 @@ class Job(object):
 
     :arg rdb: The underlying redis connection.
     """
-    def __init__(self, rdb):
+    def __init__(self, rdb, encoder=json):
         self.rdb = rdb
         self.urn = uuid.uuid4().urn
         self.__result = None
+        self.encoder = encoder
 
     @property
     def result(self):
@@ -290,7 +289,7 @@ class Job(object):
         data = self.rdb.rpop(self.urn)
         if data:
             self.rdb.delete(self.urn)
-            data = json.loads(data)
+            data = self.encoder.loads(data)
             self.__result = data
             return data
         else:
@@ -315,7 +314,7 @@ class Job(object):
         data = self.rdb.brpop(self.urn, wait_time)
         if data:
             self.rdb.delete(self.urn)
-            data = json.loads(data[1])
+            data = self.encoder.loads(data[1])
             self.__result = data
             return True
         else:
