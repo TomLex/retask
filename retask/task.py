@@ -41,11 +41,10 @@ class Task(object):
 
     def __init__(self, data=None, raw=False, urn=None, encoder=json):
         self.encoder = encoder
-        if not raw:
-            self._data = self.encoder.dumps(data)
-        else:
-            self._data = data
-        self.urn = urn
+        self.important_data = {
+            '_data': self.encoder.dumps(data) if not raw else data,
+            'urn': urn
+        }
 
     @property
     def data(self):
@@ -53,7 +52,7 @@ class Task(object):
         The python object containing information for the current task
 
         """
-        return self.encoder.loads(self._data)
+        return self.encoder.loads(self.important_data['_data'])
 
     @property
     def rawdata(self):
@@ -65,7 +64,15 @@ class Task(object):
             only.
 
         """
-        return self._data
+        return self.important_data['_data']
+
+    @property
+    def urn(self):
+        return self.important_data['urn']
+
+    @urn.setter
+    def urn(self, value):
+        self.important_data['urn'] = value
 
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, repr(self.data))

@@ -154,7 +154,7 @@ class Queue(object):
         data = self.rdb.brpop(self._name, wait_time)
         if data:
             task = Task()
-            task.__dict__ = self.encoder.loads(data[1])
+            task.important_data = self.encoder.loads(data[1])
             return task
         else:
             return False
@@ -192,7 +192,7 @@ class Queue(object):
         if isinstance(data, six.binary_type):
             data = six.text_type(data, 'utf-8', errors = 'replace')
         task = Task(encoder=self.encoder)
-        task.__dict__ = self.encoder.loads(data)
+        task.important_data = self.encoder.loads(data)
         return task
 
     def enqueue(self, task):
@@ -225,7 +225,7 @@ class Queue(object):
             #We can set the value to the queue
             job = Job(self.rdb, encoder=self.encoder)
             task.urn = job.urn
-            text = self.encoder.dumps(task.__dict__)
+            text = self.encoder.dumps(task.important_data)
             self.rdb.lpush(self._name, text)
         except Exception as err:
             return False
